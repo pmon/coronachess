@@ -18,9 +18,9 @@ CoronaChess is an exercise project to learn and use the scheme language. It is a
 
 CoronaChess has been developed with Gambit-C scheme dialect, it runs in the scheme interpreter as weel as a native executable after compilation.
 To compile CoronaChess with the Gambit-C compiler, run the following command into a terminal window
-
+```
 gsc -exe coronachess.scm
-
+```
 then run coronachess executable or connect an UCI compatible chess interface to the coronachess executable.
 
 CoronaChess is very slow compared to other chess engines but it still gives me hard and fun blitz matches, hope you can enjoy it also ;-)
