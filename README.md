@@ -1,7 +1,7 @@
-# CoronaChess
+![CoronaChess](https://raw.githubusercontent.com/pmon/coronachess/master/coronachess-logo.svg)
 My chess engine exercise in scheme lang.
 
-![CoronaChess](https://raw.githubusercontent.com/pmon/coronachess/master/coronachess-logo.svg)
+
 
 CoronaChess is an exercise project to learn and use the scheme language. It is a fully functional chess engine supporting UCI protocol and implementing the following chess engine techniques
 * Magic bitboards
