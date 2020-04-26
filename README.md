@@ -18,7 +18,7 @@ CoronaChess is an exercise project to learn and use the scheme language. It is a
 * Iterative deepening
 * Time management
 
-CoronaChess has been developed with Gambit-C scheme dialect, it runs in the scheme interpreter as weel as a native executable after compilation.
+CoronaChess has been developed with Gambit-C scheme dialect, it runs in the scheme interpreter as well as a native executable after compilation.
 To compile CoronaChess with the Gambit-C compiler, run the following command into a terminal window
 ```
 gsc -exe coronachess.scm
