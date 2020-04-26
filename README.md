@@ -1,5 +1,7 @@
-# coronachess
-My chess engine exercise in scheme lang
+# CoronaChess
+My chess engine exercise in scheme lang.
+
+![CoronaChess](https://raw.githubusercontent.com/pmon/coronachess/master/coronachess-logo.svg)
 
 CoronaChess is an exercise project to learn and use the scheme language. It is a fully functional chess engine supporting UCI protocol and implementing the following chess engine techniques
 * Magic bitboards
@@ -25,3 +27,7 @@ then run coronachess executable or connect an UCI compatible chess interface to 
 
 CoronaChess is very slow compared to other chess engines but it still gives me hard and fun blitz matches, hope you can enjoy it also ;-)
 
+### Credits and reference
+- [PNGIMG site](https://pngimg.com) for the virus logo
+- [CPW site](https://www.chessprogramming.org/Main_Page) for the enourmous and useful documentation
+- [Gambit Scheme](http://www.gambitscheme.org/wiki/index.php/Main_Page) ... had to use it only for the name for my chess engine ;-)
