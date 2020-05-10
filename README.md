@@ -30,4 +30,4 @@ CoronaChess is very slow compared to other chess engines but it still gives me h
 ### Credits and reference
 - [PNGIMG site](https://pngimg.com) for the virus logo
 - [CPW site](https://www.chessprogramming.org/Main_Page) for the enormous and useful documentation
-- [Gambit Scheme](http://www.gambitscheme.org/wiki/index.php/Main_Page) ... had to use it only for the name for my chess engine ;-)
+- [Gambit Scheme](http://www.gambitscheme.org/wiki/index.php/Main_Page) ... had to use it only for its name for my chess engine ;-)
