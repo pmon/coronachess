@@ -547,22 +547,25 @@
 (define (init-pseudo-random)
 	(random-source-pseudo-randomize! default-random-source 22 03))
 (define (random-64bit) (random-integer (+ #xFFFFFFFFFFFFFFFF 1)))
+; (define (v-side-index side)
+; 	(if (fx= side white) (fx- (fx* 64 6) 4) (fx- (fx* 64 6) 3)))
+; (define (v-both-side-index) (fx- (fx* 64 6) 2)) ; stores xor between white & black
 (define (v-side-index side)
-	(if (fx= side white) (fx- (fx* 64 6) 4) (fx- (fx* 64 6) 3)))
-(define (v-both-side-index) (fx- (fx* 64 6) 2)) ; stores xor between white & black
+	(if (fx= side white) 60 61))
+(define v-both-side-index 62) ; stores xor between white & black
 
 (define (init-zobrist-vector)
 	(init-pseudo-random)
 	(let loop ((zobrist-vector (make-u64vector ; (make-vector 
-              760)) (i 0))
-		(if (< i 760)
+              768)) (i 0))
+		(if (< i 768)
 			(begin
         ; (vector-set! zobrist-vector i (u64vector (random-64bit)))
         (u64vector-set! zobrist-vector i (random-64bit))
 				(loop zobrist-vector (+ 1 i)))
 			(begin
 				; (vector-set! zobrist-vector (v-both-side-index) 
-				(u64vector-set! zobrist-vector (v-both-side-index) 
+				(u64vector-set! zobrist-vector v-both-side-index 
 					; (u64vector
             (u64-xor
 						; (u64-ref0 (vector-ref zobrist-vector (v-side-index white)))
@@ -573,6 +576,8 @@
 				zobrist-vector))))
 
 (define zhash (init-zobrist-vector))
+
+(define (lines-idx sq1 sq2) (fx+ sq2 (fx* 64 sq1)))
 
 (define lines (make-u64vector (fx* 64 64) 0))
 (define (init-lines) 

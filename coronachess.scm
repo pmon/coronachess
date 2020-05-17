@@ -11,6 +11,17 @@
 		((not (pair? x)) (list x))
     (else (append (flatten (car x)) (flatten (cdr x))))))
 
+(define (any-list->string x)
+	(append-strings
+		(map
+			(lambda (x)
+				(cond
+					((string? x) (append-strings (list " " x)))
+					((number? x) (append-strings (list " " (number->string x))))
+					((symbol? x) (append-strings (list " " (symbol->string x))))
+					(else x)))
+			(flatten x))))
+
 (define (filter op xs)
   (fold-right
     (lambda (next result) (if (op next) (cons next result) result))
@@ -123,10 +134,10 @@
 
 (define (all-castle-rigths)
 	(list
-		(make-piece (* white king) 6)
-		(make-piece (* white king) 2)
-		(make-piece (* black king) 62)
-		(make-piece (* black king) 58)))
+		(make-piece (fx* white king) 6)
+		(make-piece (fx* white king) 2)
+		(make-piece (fx* black king) 62)
+		(make-piece (fx* black king) 58)))
 
 (define (opposite-side side) (fx* -1 side))
 (define (can-castle-to? square castle-rights)
@@ -190,72 +201,17 @@
 (define (between-idx sq1 sq2) (fx+ sq2 (fx* 64 sq1)))
 
 ; used to access files and ranks in lines bitboard vector
-(define (file-idx file-nbr) (lines-idx (fx+ file-nbr 0) (fx+ file-nbr 8)))
-(define (rank-idx rank-nbr) (lines-idx (fx+ (fx* rank-nbr 8) 0) (fx+ (fx* rank-nbr 8) 1)))
+(define (file-idx file-nbr) (lines-idx file-nbr (fx+ file-nbr 8)))
+(define (rank-idx rank-nbr) (lines-idx (fx* rank-nbr 8) (fx+ (fx* rank-nbr 8) 1)))
 
-; (define u64c-and
-;   (c-lambda (unsigned-int64 unsigned-int64)
-;     unsigned-int64 "___return(___arg1 & ___arg2);"))
-
-; (define u64c-ior
-;   (c-lambda (unsigned-int64 unsigned-int64)
-;     unsigned-int64 "___return(___arg1 | ___arg2);"))
-
-; (define u64c-xor
-;   (c-lambda (unsigned-int64 unsigned-int64)
-;     unsigned-int64 "___return(___arg1 ^ ___arg2);"))
-
-; (define u64c-not
-;   (c-lambda (unsigned-int64)
-;     unsigned-int64 "___return(~___arg1);"))
-
-; (define u64c-shift
-;   (c-lambda (unsigned-int64 int)
-;     unsigned-int64
-;     "if (___arg2 >= 0) ___return(___arg1 << ___arg2);
-;       else ___return(___arg1 >> (-___arg2));"))
-
-; (define u64c-mult
-;   (c-lambda (unsigned-int64 unsigned-int64)
-;     unsigned-int64 "___return(___arg1 * ___arg2);"))
-
-; (define c-reset-ls1b
-;   (c-lambda (unsigned-int64)
-;     unsigned-int64 "___return(___arg1 & (___arg1 - 1));"))
-
-; (define c-bitcount
-;   (c-lambda (unsigned-int64)
-;     int "___return(__builtin_popcountl(___arg1));"))
-
-; (define c-bitscan-fwd
-;   (c-lambda (unsigned-int64)
-;     int "___return(__builtin_ffsl(___arg1) - 1);"))
-
-; (define (u64-and . args-list) (fold u64c-and #xFFFFFFFFFFFFFFFF args-list))
 (define u64-and bitwise-and)
-
-; (define (u64-ior . args-list)	(fold	u64c-ior 0 args-list))
 (define u64-ior bitwise-ior)
-
-; (define (u64-xor . args-list)	(fold	u64c-xor 0 args-list))
 (define u64-xor bitwise-xor)
-
-; (define u64-not u64c-not)
 (define u64-not bitwise-not)
-
-; (define u64-shift u64c-shift)
 (define (u64-shift n i)	(u64-and #xFFFFFFFFFFFFFFFF (arithmetic-shift n i)))
-
-; (define u64-mult u64c-mult)
 (define (u64-mult a b) (u64-and #xFFFFFFFFFFFFFFFF (* a b)))
-
-; (define bitwise-bit-count c-bitcount)
 (define bitwise-bit-count bit-count)
-
-; (define bitscan-fwd c-bitscan-fwd)
 (define bitscan-fwd first-bit-set)
-
-; (define reset-ls1b c-reset-ls1b)
 (define (reset-ls1b bits) (u64-and bits (- bits 1)))
 
 ; return a bitmap
@@ -275,6 +231,10 @@
 (define (file-fill bits) (u64-ior (front-fill white bits) (front-fill black bits)))
 (define (file-set bits) (u64-and #xFF (front-fill black bits)))
 
+; frequently used files bitmap
+(define ALL-FILES-BUT-A (u64-not (u64vector-ref lines (file-idx 0))))
+(define ALL-FILES-BUT-H (u64-not (u64vector-ref lines (file-idx 7))))
+
 ;; ---- move & attacks generation functions ----
 
 (define occupied-idx 0)
@@ -285,14 +245,14 @@
 (define white-blockers-idx 17)
 (define black-blockers-idx 18)
 
+(define (bitbrd-idx2 side piece-type)
+	; (if (fx= side white)
+	; 	piece-type
+	; 	(fx+ 6 piece-type)))
+	(fx+ (fx* (fx- 1 side) 3) piece-type))
+
 (define (bitbrd-idx piece)
-	(if (number? piece)
-		(if (fx>= piece 0)
-			piece
-			(fx+ 6 (fx- piece)))
-		(if (is-white? piece)
-			(piece-type piece)
-			(fx+ 6 (piece-type piece)))))
+	(bitbrd-idx2 (piece-color piece) (piece-type piece)))
 
 (define (update-bitbrd-from-piece-bitbrd bitbrd)
 	(u64vector-set! bitbrd white-pieces-idx
@@ -318,9 +278,9 @@
 
 ; used for testing/debugging
 (define (validate-bitbrd bitbrd)
-	(if (zero? (u64vector-ref bitbrd (bitbrd-idx (fx* white king))))
+	(if (zero? (u64vector-ref bitbrd (bitbrd-idx2 white king)))
 		(error 'validate-bitbrd "White king missing"))
-	(if (zero? (u64vector-ref bitbrd (bitbrd-idx (fx* black king))))
+	(if (zero? (u64vector-ref bitbrd (bitbrd-idx2 black king)))
 		(error 'validate-bitbrd "Black king missing"))
 	(if (not (zero? 
 				(u64-xor
@@ -424,12 +384,12 @@
 (define (gen-pawn-attacks-bitbrd-east pawns side)
 	(u64-and
 		(u64-shift pawns (if (fx= side white) 9 -7))
-		(u64-not (u64vector-ref lines (file-idx 0)))))
+		ALL-FILES-BUT-A))
 
 (define (gen-pawn-attacks-bitbrd-west pawns side)
 	(u64-and
 		(u64-shift pawns (if (fx= side white) 7 -9))
-		(u64-not (u64vector-ref lines (file-idx 7)))))
+		ALL-FILES-BUT-H))
 
 (define (pawn-captures-list-east side pawns captures)
 	(map
@@ -497,7 +457,7 @@
 					((zero? w-ep) 
 						; special verification for corner case
 						(let* ((sq-victim (fx+ (piece-square (chessp-ep cp)) (fx* side -8)))
-										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 										(sq-attkr (fx+ (piece-square (chessp-ep cp)) (if (fx= side white) -9 7)))
 										(blockers (u64-xor (u64vector-ref (chessp-bitbrd cp) occupied-idx) ep (square->bit sq-victim) (square->bit sq-attkr))))
 							(if (zero? (slider-attackers-to-square (chessp-bitbrd cp) (opposite-side side) sq-k blockers))
@@ -510,7 +470,7 @@
 					(else 
 						; special verification for corner case
 						(let* ((sq-victim (fx+ (piece-square (chessp-ep cp)) (fx* side -8)))
-										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 										(sq-attkr (fx+ (piece-square (chessp-ep cp)) (if (fx= side white) -7 9)))
 										(blockers (u64-xor (u64vector-ref (chessp-bitbrd cp) occupied-idx) ep (square->bit sq-victim) (square->bit sq-attkr))))
 							(if (zero? (slider-attackers-to-square (chessp-bitbrd cp) (opposite-side side) sq-k blockers))
@@ -544,7 +504,7 @@
 						; (pretty-print "west side attack to ep")
 						; special verification for corner case
 						(let* ((sq-victim (fx+ (piece-square (chessp-ep cp)) (fx* side -8)))
-										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 										(sq-attkr (fx+ (piece-square (chessp-ep cp)) (if (fx= side white) -9 7)))
 										(blockers (u64-xor (u64vector-ref (chessp-bitbrd cp) occupied-idx) ep (square->bit sq-victim) (square->bit sq-attkr))))
 							; (pretty-print (list "victim sq" sq-victim "attkr sq" sq-attkr "calculated blockers" blockers
@@ -560,7 +520,7 @@
 						; (pretty-print "east side attack to ep")
 						; special verification for corner case
 						(let* ((sq-victim (fx+ (piece-square (chessp-ep cp)) (fx* side -8)))
-										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+										(sq-k (bitscan-fwd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 										(sq-attkr (fx+ (piece-square (chessp-ep cp)) (if (fx= side white) -7 9)))
 										(blockers (u64-xor (u64vector-ref (chessp-bitbrd cp) occupied-idx) ep (square->bit sq-victim) (square->bit sq-attkr))))
 							; (pretty-print (list "victim sq" sq-victim "attkr sq" sq-attkr "calculated blockers" blockers
@@ -581,7 +541,7 @@
 		(lambda (square attacks)
 			(u64-ior attacks (magic-attacks-bitbrd-for-square piece square blockers)))
 		0
-		(bits->squares (u64vector-ref bitbrd (bitbrd-idx (fx* side piece))))))
+		(bits->squares (u64vector-ref bitbrd (bitbrd-idx2 side piece)))))
 
 ; side is the side of the attackers to be found
 (define (attackers-to-square bitbrd side square blockers piece-types)
@@ -593,17 +553,17 @@
 						(u64-ior 
 							(u64-and
 								(u64-shift sq-bitbrd (if (fx= side white) -9 7))
-								(u64-not (u64vector-ref lines (file-idx 7)))
+								ALL-FILES-BUT-H
 								blockers
-								(u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))))
+								(u64vector-ref bitbrd (bitbrd-idx2 side pawn)))
 							(u64-and
 								(u64-shift sq-bitbrd (if (fx= side white) -7 9))
-								(u64-not (u64vector-ref lines (file-idx 0)))
+								ALL-FILES-BUT-A
 								blockers
-								(u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))))))
+								(u64vector-ref bitbrd (bitbrd-idx2 side pawn)))))
 					(u64-and
 						blockers
-						(u64vector-ref bitbrd (bitbrd-idx (fx* side piece)))
+						(u64vector-ref bitbrd (bitbrd-idx2 side piece))
 						(magic-attacks-bitbrd-for-square piece square blockers)))))
 		0
 		piece-types))
@@ -651,18 +611,18 @@
 
 (define (gen-pawn-attacks-bitbrd bitbrd side)
 	(u64-ior
-		(gen-pawn-attacks-bitbrd-east (u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))) side)
-		(gen-pawn-attacks-bitbrd-west (u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))) side)))
+		(gen-pawn-attacks-bitbrd-east (u64vector-ref bitbrd (bitbrd-idx2 side pawn)) side)
+		(gen-pawn-attacks-bitbrd-west (u64vector-ref bitbrd (bitbrd-idx2 side pawn)) side)))
 
 (define (piece-type-from-bitbrd-w-param bitbrd cp side pieces)
 	(cond
 		((null? pieces) 0) ; zero is returned when no bit set is found for the given pieces
 		((and (fx= pawn (car pieces)) (not (null? (chessp-ep cp)))
 					(any-bits-set? bitbrd (u64-ior 
-																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn)))
+																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn))
 																	(piece->bit (chessp-ep cp)))))
 			pawn)
-		((any-bits-set? bitbrd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side (car pieces)))))
+		((any-bits-set? bitbrd (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side (car pieces))))
 			(car pieces))
 		(else (piece-type-from-bitbrd-w-param bitbrd cp side (cdr pieces)))))
 
@@ -679,7 +639,7 @@
 ; return bitboard with squares the side king can not move to
 (define (king-danger-bitbrd-for-side side bitbrd)
 	(let ((opponent (opposite-side side))
-				(blockers (u64-xor (u64vector-ref bitbrd (bitbrd-idx (fx* side king)))
+				(blockers (u64-xor (u64vector-ref bitbrd (bitbrd-idx2 side king))
 													 (u64vector-ref bitbrd occupied-idx))))
 		(u64-ior
 			(gen-piece-attacks-bitbrd bitbrd opponent king blockers)
@@ -710,7 +670,7 @@
 ; return a bitboard including pieces of both sides that block slider attacks to the king of the give side
 ; blockers should be the occupied bitboard or any other restrictive mask (maybe I should remove this param...)
 (define (sliders-blockers bitbrd side blockers)
-	(let ((k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx (fx* side king)))))
+	(let ((k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx2 side king))))
 				(all-pieces (u64vector-ref bitbrd occupied-idx)))
 		(fold
 			(lambda (square pinned)
@@ -721,21 +681,21 @@
 					(u64-and
 						(xray-rook-attacks blockers all-pieces k-sq)
 						(u64-ior
-							(u64vector-ref bitbrd (bitbrd-idx (fx* (opposite-side side) rook)))
-							(u64vector-ref bitbrd (bitbrd-idx (fx* (opposite-side side) queen))))))
+							(u64vector-ref bitbrd (bitbrd-idx2 (opposite-side side) rook))
+							(u64vector-ref bitbrd (bitbrd-idx2 (opposite-side side) queen)))))
 				(bits->squares
 					(u64-and
 						(xray-bishop-attacks blockers all-pieces k-sq)
 						(u64-ior
-							(u64vector-ref bitbrd (bitbrd-idx (fx* (opposite-side side) bishop)))
-							(u64vector-ref bitbrd (bitbrd-idx (fx* (opposite-side side) queen))))))))))
+							(u64vector-ref bitbrd (bitbrd-idx2 (opposite-side side) bishop))
+							(u64vector-ref bitbrd (bitbrd-idx2 (opposite-side side) queen)))))))))
 
 (define (pinned-moves-available? cp pinned side)
 	(if (zero? pinned)
 		#f
 		(let* ((bitbrd (chessp-bitbrd cp))
 					(occ (u64-xor (u64vector-ref bitbrd occupied-idx) pinned))
-					(k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx (fx* side king)))))
+					(k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx2 side king))))
 					(attk (slider-attackers-to-square bitbrd (opposite-side side) k-sq occ)))
 			(any? 
 				(lambda (attk-square)
@@ -743,15 +703,15 @@
 								 (ray (u64-ior pinner (u64vector-ref segments (between-idx attk-square k-sq))))
 								 (bit (u64-and pinned ray)) (square (bitscan-fwd bit)))
 						(cond
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side pawn)))
 								(or
 									(pawn-captures-available? cp bit ray)
 									(pawn-moves-available? cp bit ray)))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side bishop))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side bishop)))
 								(piece-moves-available? bishop side pinner occ (list square) ray))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side rook))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side rook)))
 								(piece-moves-available? rook side pinner occ (list square) ray))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side queen))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side queen)))
 								(piece-moves-available? queen side pinner occ (list square) ray))
 							(else #f ))))
 				(bits->squares attk)))))
@@ -761,7 +721,7 @@
 		'()
 		(let* ((bitbrd (chessp-bitbrd cp))
 					(occ (u64-xor (u64vector-ref bitbrd occupied-idx) pinned))
-					(k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx (fx* side king)))))
+					(k-sq (bitscan-fwd (u64vector-ref bitbrd (bitbrd-idx2 side king))))
 					(attk (slider-attackers-to-square bitbrd (opposite-side side) k-sq occ)))
 			(map 
 				(lambda (attk-square)
@@ -769,19 +729,19 @@
 								 (ray (u64-ior pinner (u64vector-ref segments (between-idx attk-square k-sq))))
 								 (bit (u64-and pinned ray)) (square (bitscan-fwd bit)))
 						(cond
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side pawn)))
 								(append
 									(gen-pawn-captures-list cp bit ray)
 									(gen-pawn-moves-list cp bit ray)))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side bishop))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side bishop)))
 								(append
 									(gen-piece-captures-only bishop side pinner occ (list square) ray)
 									(gen-piece-moves-only bishop side occ (list square) ray)))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side rook))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side rook)))
 								(append
 									(gen-piece-captures-only rook side pinner occ (list square) ray)
 									(gen-piece-moves-only rook side occ (list square) ray)))
-							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side queen))))
+							((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side queen)))
 								(append
 									(gen-piece-captures-only queen side pinner occ (list square) ray)
 									(gen-piece-moves-only queen side occ (list square) ray)))
@@ -839,17 +799,17 @@
 	(let* ((bit (square->bit square))
 				 (side (if (any-bits-set? bit (u64vector-ref bitbrd white-pieces-idx)) white black)))
 		(cond
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side pawn))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side pawn)))
 				(make-piece (fx* side pawn) square))
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side knight))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side knight)))
 				(make-piece (fx* side knight) square))
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side bishop))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side bishop)))
 				(make-piece (fx* side bishop) square))
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side rook))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side rook)))
 				(make-piece (fx* side rook) square))
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side queen))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side queen)))
 				(make-piece (fx* side queen) square))
-			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx (fx* side king))))
+			((any-bits-set? bit (u64vector-ref bitbrd (bitbrd-idx2 side king)))
 				(make-piece (fx* side king) square))
 			(else
 				(error 'bitbrd-piece-at (list square bitbrd)) ))))
@@ -858,7 +818,6 @@
 
 (define magic-bishop-idx (fx* 64 512)) ; 9 bits (so you shift by 64-9 = 55)
 (define magic-rook-idx (fx* 64 4096)) ; 12 bits (so you shift by 64-12 = 52)
-;(define magic-db (make-u64vector (+ magic-rook-idx magic-bishop-idx) 0))
 
 (define (magic-bishop-attacks square occupied)
 	(u64vector-ref magic-db
@@ -918,19 +877,19 @@
 (define (is-endgame? cp)
 	(and	
 		(or
-			(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white queen))))
+			(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white queen)))
 			(and
-				(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white rook))))
+				(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white rook)))
 				(fx= 1 (bitwise-bit-count 
-												(u64-xor	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white bishop)))
-																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white knight))))))))
+												(u64-xor	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white bishop))
+																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white knight)))))))
 		(or
-			(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black queen))))
+			(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black queen)))
 			(and
-				(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black rook))))
+				(zero? (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black rook)))
 				(fx= 1 (bitwise-bit-count 
-												(u64-xor	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black bishop)))
-																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black knight))))))))
+												(u64-xor	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black bishop))
+																	(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black knight)))))))
 	))
 
 ; return if side is playing with only king and pawns
@@ -938,10 +897,10 @@
 (define (kp-only? cp)
 	(zero?
 		(u64-ior
-			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (chessp-side cp) queen)))
-			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (chessp-side cp) rook)))
-			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (chessp-side cp) bishop)))
-			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (chessp-side cp) knight))))))
+			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (chessp-side cp) queen))
+			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (chessp-side cp) rook))
+			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (chessp-side cp) bishop))
+			(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (chessp-side cp) knight)))))
 
 (define (init-pawn-piece-table)
 	(do ((i 0 (+ 1 i))
@@ -1096,8 +1055,8 @@
 
 (define (passed-pawns side white-pawns black-pawns)
 	(let* ((front (front-fill (opposite-side side) (if (fx= white side) black-pawns white-pawns)))
-					(front-e (u64-and (u64-not (u64vector-ref lines (file-idx 0))) (u64-shift front 1)))
-					(front-w (u64-and (u64-not (u64vector-ref lines (file-idx 7))) (u64-shift front -1))))
+					(front-e (u64-and ALL-FILES-BUT-A (u64-shift front 1)))
+					(front-w (u64-and ALL-FILES-BUT-H (u64-shift front -1))))
 		(bitwise-bit-count
 			(if (fx= white side)
 				(u64-and white-pawns (u64-not (u64-ior front front-e front-w)))
@@ -1108,8 +1067,8 @@
 		(bitwise-bit-count
 			(u64-and
 				pawns
-				(u64-not (u64-and (u64-not (u64vector-ref lines (file-idx 0))) (u64-shift fill 1)))
-				(u64-not (u64-and (u64-not (u64vector-ref lines (file-idx 7))) (u64-shift fill -1)))))))
+				(u64-not (u64-and ALL-FILES-BUT-A (u64-shift fill 1)))
+				(u64-not (u64-and ALL-FILES-BUT-H (u64-shift fill -1)))))))
 
 (define white-space (u64-and
 											(u64-ior (u64vector-ref lines (file-idx 2)) (u64vector-ref lines (file-idx 3))
@@ -1123,8 +1082,9 @@
 																(u64vector-ref lines (rank-idx 4)))))
 
 (define (king-safety side cp)
-	(let* ((k-square (car (bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king))))))
-				 (k-squares (u64vector-ref king-bitbrd k-square))
+	(let* ((k-bit (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king)))
+				 (k-square (bitscan-fwd k-bit))
+				 (k-squares (u64-ior k-bit (u64vector-ref king-bitbrd k-square)))
 				 (k-attkd (u64-and k-squares (if (fx= white side)
 				 																(u64vector-ref (chessp-bitbrd cp) black-attacks-idx)
 				 																(u64vector-ref (chessp-bitbrd cp) white-attacks-idx))))
@@ -1133,7 +1093,7 @@
 		(fx*
 			(bitwise-bit-count k-attkd)
 			(fxquotient
-				(fold 
+				(fold
 					(lambda (piece danger)
 						(fx+ danger
 							(fold
@@ -1142,22 +1102,22 @@
 										(fx+ danger (vector-ref material-score piece))
 										danger))
 								0
-								(bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (opposite-side side) piece)))))))
+								(bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (opposite-side side) piece))))))
 					0
 					(list queen rook bishop knight))
 				-100))))
 
-(define (bit-board piece cp) (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx piece)))
+(define (bit-board side piece cp) (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side piece)))
 
 (define (square-color bit) (u64-and 1 (u64-shift #xAA55AA55AA55AA55 (fx- bit))))
 
 ; https://www.chessprogramming.org/Draw_Evaluation
 ; https://www.chessprogramming.org/KPK
 (define (draw-evaluation cp)
-	(if	(and (zero? (bit-board (fx* white pawn) cp))  (zero? (bit-board (fx* black pawn) cp))
-					 (zero? (bit-board (fx* white queen) cp)) (zero? (bit-board (fx* white rook) cp))
-					 (zero? (bit-board (fx* black queen) cp)) (zero? (bit-board (fx* black rook) cp)))
-		(let ((wb (bits->squares (bit-board (fx* white bishop) cp))) (bb (bits->squares (bit-board (fx* black bishop) cp))))
+	(if	(and (zero? (bit-board white pawn cp))  (zero? (bit-board black pawn cp))
+					 (zero? (bit-board white queen cp)) (zero? (bit-board white rook cp))
+					 (zero? (bit-board black queen cp)) (zero? (bit-board black rook cp)))
+		(let ((wb (bits->squares (bit-board white bishop cp))) (bb (bits->squares (bit-board black bishop cp))))
 			(and
 				(not (and (> (length wb) 1) (null? bb) (not (fx= (square-color (car wb)) (square-color (cadr wb))))))
 				(not (and (> (length bb) 1) (null? wb) (not (fx= (square-color (car bb)) (square-color (cadr bb))))))))
@@ -1177,15 +1137,15 @@
 					(fx* (if end-game? 50 20) 
 						(fx-
 							(passed-pawns white
-								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white pawn)))
-								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black pawn))))
+								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white pawn))
+								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black pawn)))
 							(passed-pawns black
-								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white pawn)))
-								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black pawn))))))
+								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white pawn))
+								(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black pawn)))))
 					(fx* (if end-game? -15 -25)
 						(fx-
-							(isolated-pawns (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white pawn))))
-							(isolated-pawns (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black pawn))))))
+							(isolated-pawns (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 white pawn)))
+							(isolated-pawns (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 black pawn)))))
 					(fx* (if end-game? 1 3)
 						(fx- (bitwise-bit-count (u64-xor white-space (u64vector-ref (chessp-bitbrd cp) black-attacks-idx)))
 								(bitwise-bit-count (u64-xor black-space (u64vector-ref (chessp-bitbrd cp) white-attacks-idx)))))
@@ -1204,7 +1164,7 @@
 					(fx- gain)
 					(let*	((small-attkr (piece-type-from-bitbrd attkr cp side))
 								 (all-attkr (u64-and attkr
-														(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side small-attkr)))))
+														(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side small-attkr))))
 								 (curr-attkr (if (> (bitwise-bit-count all-attkr) 1)
 															(square->bit (bitscan-fwd all-attkr)) all-attkr)))
 						(fx- (max (fx- new-gain)
@@ -1220,68 +1180,6 @@
 		(fx- (max (fx- gain)
 			(see-recur cp square opp-side (u64-xor blockers (piece->bit (move-from move))) (piece-type (move-from move)) gain)))))
 
-; from http://www.talkchess.com/forum3/viewtopic.php?topic_view=threads&p=419315&t=40054
-; (define (see-result d gain)
-; 	(let ((i (fx- d 1)))
-; 		(if (fx= i 0)
-; 			(vector-ref gain 0)
-; 			(begin
-; 				(vector-set! gain (fx- i 1) (fx- (max (vector-ref gain i) (fx- (vector-ref gain (fx- i 1))))))
-; 				(see-result i gain)))))
-
-; (define (see2 move cp)
-; 	(let* ((opp-side (opposite-side (chessp-side cp))) 
-; 				 (current-attkr (piece->bit (move-from move)))
-; 				 (pos-idx (piece-square (move-to move)))
-; 				 (attk-sq (piece->bit (move-to move)))
-; 				 (occ (u64vector-ref (chessp-bitbrd cp) occupied-idx))
-; 				 (mayXray (u64-xor occ
-; 										(u64-ior
-; 											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white knight))) 
-; 											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black knight))) 
-; 											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* white king))) 
-; 											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* black king)))))) 
-; 				 (gain (make-vector 32 0)))
-; 		; (if (zero? (piece-type-from-bitbrd attk-sq cp opp-side))
-; 		; 	(error 'see (list attk-sq opp-side cp)))
-; 		; (vector-set! gain 0 (vector-ref material-score (piece-type-from-bitbrd attk-sq cp opp-side)))				
-; ; instead of using simple piece score use piece squares tables values
-; 		(vector-set! gain 0 (vector-ref material-score 
-; 			(pt-idx (fx* opp-side (piece-type-from-bitbrd attk-sq cp opp-side)) pos-idx)))
-; 		(pretty-print (list "ref" 0 (piece-type (move-from move)) (chessp-side cp) (vector-ref gain 0) current-attkr occ))
-; 		(see-loop cp mayXray gain 1 attk-sq pos-idx (piece-type (move-from move)) current-attkr opp-side
-; 							(u64-ior
-; 								(all-attackers-to-square (chessp-bitbrd cp) white pos-idx occ)
-; 								(all-attackers-to-square (chessp-bitbrd cp) black pos-idx occ)) occ)))
-
-; (define (see-loop cp mayXray gain d attk-sq pos-idx piece from side attkdef occup)
-; 	; (vector-set! gain d (fx- (vector-ref material-score piece) (vector-ref gain (fx- d 1))))
-; ; instead of using simple piece score use piece squares tables values
-; 	(vector-set! gain d
-; 		(fx-
-; 			(vector-ref material-score (pt-idx (fx* side piece) pos-idx))
-; 			(vector-ref gain (fx- d 1))))
-; 	(pretty-print (list "ref" d piece side (vector-ref gain d) from occup))
-; 	(let* ((occ2 (u64-xor occup from))
-; 					(attkdef2 
-; 						(if (any-bits-set? from mayXray)
-; 							(u64-ior
-; 								(u64-xor attkdef from)
-; 								(all-attackers-to-square (chessp-bitbrd cp) white pos-idx occ2)
-; 								(all-attackers-to-square (chessp-bitbrd cp) black pos-idx occ2))
-; 							(u64-xor attkdef from))))	
-; 		; (pretty-print (list from occ2 attkdef2))
-; 		(if (fx> (fx- (max (vector-ref gain d) (fx- (vector-ref gain (fx- d 1))))) 0)
-; 			(see-result d gain)
-; 			(let ((p (piece-type-from-bitbrd attkdef2 cp side)))
-; 				(if (fx> p 0)
-; 					(see-loop cp mayXray gain (fx+ 1 d) attk-sq pos-idx p 
-; 										(u64-and
-; 											attkdef2
-; 											(u64vector-ref (chessp-bitbrd cp)	(bitbrd-idx (fx* side p))))
-; 										(opposite-side side) attkdef2 occ2)
-; 					(see-result d gain))))))
-
 ;; ---- board functions ----
 
 (define (chessp->board cp)
@@ -1295,8 +1193,7 @@
 
 (define (gen-legal-moves cp)
 	(if (legal-moves-available? cp)
-		(fold	append '()
-			(map force (gen-legal-moves-delayed 'all cp)))
+		(apply append (map force (gen-legal-moves-delayed 'all cp)))
 		'()))
 
 (define (legal-moves-available? cp)
@@ -1305,26 +1202,26 @@
 				 			 (if (fx= side white) black-pieces-idx white-pieces-idx)))
 				 (blockers (u64vector-ref (chessp-bitbrd cp) occupied-idx))
 				 (pinned (pinned-pieces cp side))
-				 (k-list (bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+				 (k-list (bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 				 (q-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side queen)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side queen)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side queen))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side queen))))))
 				 (r-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side rook)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side rook)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side rook))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side rook))))))
 				 (b-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side bishop)))				 
-										 	(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side bishop)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side bishop))				 
+										 	(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side bishop))))))
 				 (n-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side knight)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side knight)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side knight))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side knight))))))
 				 (pawn-set (u64-xor
-										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn)))
-										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn))))))
+										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn))
+										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn)))))
 				 (k-safe (u64-not (king-danger-bitbrd-for-side side (chessp-bitbrd cp)))))
 		(if (not (under-check? cp))
 			(or
@@ -1369,33 +1266,33 @@
 				 			 (if (fx= side white) black-pieces-idx white-pieces-idx)))
 				 (blockers (u64vector-ref (chessp-bitbrd cp) occupied-idx))
 				 (pinned (pinned-pieces cp side))
-				 (k-list (bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side king)))))
+				 (k-list (bits->squares (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side king))))
 				 (q-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side queen)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side queen)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side queen))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side queen))))))
 				 (r-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side rook)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side rook)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side rook))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side rook))))))
 				 (b-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side bishop)))				 
-										 	(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side bishop)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side bishop))				 
+										 	(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side bishop))))))
 				 (n-list (bits->squares
 				 						(u64-xor
-											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side knight)))
-											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side knight)))))))
+											(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side knight))
+											(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side knight))))))
 				 (pawn-promovable
 				 				(u64-and
 								 	(u64-not (u64vector-ref lines (rank-idx (if (fx= side white) 6 1))))
 				 					(u64-xor
-										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn)))
-										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn)))))))
+										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn))
+										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn))))))
 				 (pawn-set (u64-xor
 										pawn-promovable
-										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn)))
-										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* side pawn))))))
+										(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn))
+										(u64-and pinned (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 side pawn)))))
 				 (k-safe (u64-not (king-danger-bitbrd-for-side side (chessp-bitbrd cp)))))
 		(if (not (under-check? cp))
 			(list
@@ -1778,7 +1675,7 @@
 	(let* ((piece (piece-type (move-to move))) (from-sq (piece-square (move-from move)))
 				 (to-sq (piece-square (move-to move))) (side (chessp-side cp)) (to-bit (square->bit to-sq))
 				 (blockers (u64-ior to-bit (u64-xor (square->bit from-sq) (u64vector-ref (chessp-bitbrd cp) occupied-idx))))
-				 (k-bit (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (opposite-side (chessp-side cp)) king)))))
+				 (k-bit (u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (opposite-side (chessp-side cp)) king))))
 		(or
 			; direct attacks
 			(cond
@@ -1811,7 +1708,7 @@
 ; test if the side to move is under check
 (define (under-check? cp)
 	(any-bits-set?
-		(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx (fx* (chessp-side cp) king)))
+		(u64vector-ref (chessp-bitbrd cp) (bitbrd-idx2 (chessp-side cp) king))
 		(u64vector-ref (chessp-bitbrd cp)
 					(if (fx= white (chessp-side cp)) black-attacks-idx white-attacks-idx))))
 
@@ -1822,37 +1719,31 @@
 	(and (not (legal-moves-available? cp)) (not (under-check? cp))))
 
 ;; ---- hash & transposition table functions ----
-;; size of hash keys = (64 * 12) - 8 = 760
+;; size of hash keys = (64 * 12) = 768
 ;; 2^64 - 1 = 18446744073709551615
 
 (define (v-piece-index piece)
 	(fx+
 		(piece-square piece)
-		(cond 
-			((fx= (piece-type piece) king)			(fx* 64 0))
-			((fx= (piece-type piece) queen)			(fx* 64 1))
-			((fx= (piece-type piece) rook)			(fx* 64 2))
-			((fx= (piece-type piece) knight)		(fx* 64 3))
-			((fx= (piece-type piece) bishop)		(fx* 64 4))
-			((fx= (piece-type piece) pawn)			(fx* 64 5)))
-		(if (fx= (piece-color piece) white) 0 (fx* 64 6))))
+		(fx* 64 (fx- (piece-type piece) 1))
+		(if (fx= (piece-color piece) white) 0 384)))
 
 (define (v-ep-index ep)
 	(fx+
 		(fx- (piece-file ep) 1)
-		(if (fx= (piece-color ep) white) (fx* 64 5) (fx* 64 11)))) ; rank 1 not used for pawns
+		(if (fx= (piece-color ep) white) 0 384))) ; rank 1 not used for pawns
 
 (define (v-castle-index castle)
 	(fx+
 		(cond
-			((equal? (piece-square castle) 6) (fx- (fx* 64 6) 8)) ; rank 8 not used for pawns
-			((equal? (piece-square castle) 2) (fx- (fx* 64 6) 7))
-			((equal? (piece-square castle) 62) (fx- (fx* 64 6) 6))
-			((equal? (piece-square castle) 58) (fx- (fx* 64 6) 5)))))
+			((fx= (piece-square castle) 6) 56) ; rank 8 not used for pawns
+			((fx= (piece-square castle) 2) 57)
+			((fx= (piece-square castle) 62) 58)
+			((fx= (piece-square castle) 58) 59))))
 
 (define (v-side-index side)
-	(if (fx= side white) (fx- (fx* 64 6) 4) (fx- (fx* 64 6) 3)))
-(define (v-both-side-index) (fx- (fx* 64 6) 2)) ; stores xor between white & black
+	(if (fx= side white) 60 61))
+(define v-both-side-index 62) ; stores xor between white & black
 
 ; only used in testing
 (define (zobrist-hash-from-cp vect cp)
@@ -1904,8 +1795,8 @@
 				(if (fx= side white)
 					(let* ((square (fx- (piece-square (move-to move)) 8))
 								(bit (square->bit square)))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* black pawn))
-							(u64-xor bit (u64vector-ref bitbrd (bitbrd-idx (fx* black pawn)))))
+						(u64vector-set! bitbrd (bitbrd-idx2 black pawn)
+							(u64-xor bit (u64vector-ref bitbrd (bitbrd-idx2 black pawn))))
 						(u64vector-set! bitbrd black-pieces-idx
 							(u64-xor bit (u64vector-ref bitbrd black-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -1914,8 +1805,8 @@
 						(set! z-hash (u64-xor z-hash (u64vector-ref zhash (v-piece-index (bitbrd-piece-at square (chessp-bitbrd prev-cp)))))))
 					(let* ((square (fx+ (piece-square (move-to move)) 8))
 							  (bit (square->bit square)))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* white pawn))
-							(u64-xor bit (u64vector-ref bitbrd (bitbrd-idx (fx* white pawn)))))
+						(u64vector-set! bitbrd (bitbrd-idx2 white pawn)
+							(u64-xor bit (u64vector-ref bitbrd (bitbrd-idx2 white pawn))))
 						(u64vector-set! bitbrd white-pieces-idx
 							(u64-xor bit (u64vector-ref bitbrd white-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -1936,9 +1827,9 @@
 			((is-short-castle? move)
 				(if (fx= side white)
 					(let ((rook-swap (u64-xor (square->bit 7) (square->bit 5))))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* white rook))
+						(u64vector-set! bitbrd (bitbrd-idx2 white rook)
 							(u64-xor rook-swap
-								(u64vector-ref bitbrd (bitbrd-idx (fx* white rook)))))
+								(u64vector-ref bitbrd (bitbrd-idx2 white rook))))
 						(u64vector-set! bitbrd white-pieces-idx
 							(u64-xor rook-swap (u64vector-ref bitbrd white-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -1955,9 +1846,9 @@
 								(u64vector-ref zhash (v-piece-index (make-piece (fx* white rook) 7)))
 								(u64vector-ref zhash (v-piece-index (make-piece (fx* white rook) 5))))))
 					(let ((rook-swap (u64-xor (square->bit 63) (square->bit 61))))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* black rook))
+						(u64vector-set! bitbrd (bitbrd-idx2 black rook)
 							(u64-xor rook-swap
-								(u64vector-ref bitbrd (bitbrd-idx (fx* black rook)))))
+								(u64vector-ref bitbrd (bitbrd-idx2 black rook))))
 						(u64vector-set! bitbrd black-pieces-idx
 							(u64-xor rook-swap (u64vector-ref bitbrd black-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -1976,9 +1867,9 @@
 			((is-long-castle? move)
 				(if (fx= side white)
 					(let ((rook-swap (u64-xor (square->bit 0) (square->bit 3))))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* white rook))
+						(u64vector-set! bitbrd (bitbrd-idx2 white rook)
 							(u64-xor rook-swap
-								(u64vector-ref bitbrd (bitbrd-idx (fx* white rook)))))
+								(u64vector-ref bitbrd (bitbrd-idx2 white rook))))
 						(u64vector-set! bitbrd white-pieces-idx
 							(u64-xor rook-swap (u64vector-ref bitbrd white-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -1995,9 +1886,9 @@
 								(u64vector-ref zhash (v-piece-index (make-piece (fx* white rook) 0)))
 								(u64vector-ref zhash (v-piece-index (make-piece (fx* white rook) 3))))))
 					(let ((rook-swap (u64-xor (square->bit 56) (square->bit 59))))
-						(u64vector-set! bitbrd (bitbrd-idx (fx* black rook))
+						(u64vector-set! bitbrd (bitbrd-idx2 black rook)
 							(u64-xor rook-swap
-								(u64vector-ref bitbrd (bitbrd-idx (fx* black rook)))))
+								(u64vector-ref bitbrd (bitbrd-idx2 black rook))))
 						(u64vector-set! bitbrd black-pieces-idx
 							(u64-xor rook-swap (u64vector-ref bitbrd black-pieces-idx)))
 						(u64vector-set! bitbrd occupied-idx
@@ -2056,7 +1947,7 @@
 					0 (filter	(lambda (c) (equal? #f (member c (chessp-castle new-cp)))) (chessp-castle prev-cp)))
 				(if (null? (chessp-ep new-cp)) 0 (u64vector-ref zhash (v-ep-index (chessp-ep new-cp)))) ; add new ep
 		 		(if (null? (chessp-ep prev-cp)) 0 (u64vector-ref zhash (v-ep-index (chessp-ep prev-cp)))) ; remove old ep 
-				(u64vector-ref zhash (v-both-side-index)) ; update side to move
+				(u64vector-ref zhash v-both-side-index) ; update side to move
 				(chessp-zhash prev-cp)))
 		(chessp-repetitions-set! new-cp (update-repetitions move (chessp-zhash new-cp) prev-cp))
 		new-cp))
@@ -2154,7 +2045,7 @@
 	(let ((z-hash
 					(u64-xor
 						(if (null? (chessp-ep cp)) 0 (u64vector-ref zhash (v-ep-index (chessp-ep cp)))) ; remove old ep 
-						(u64vector-ref zhash (v-both-side-index)) ; update side to move
+						(u64vector-ref zhash v-both-side-index) ; update side to move
 						(chessp-zhash cp))))
 			(make-chessp
 				(opposite-side (chessp-side cp))
@@ -2198,6 +2089,9 @@
 			0
 			(chessp-repetitions cp))))
 
+(define (unordered-moves moves cp)
+	(list->vector (map (lambda (m) (cons -1 m)) moves)))
+
 (define (order-moves moves cp)
 	(list->vector
 		(map
@@ -2217,7 +2111,7 @@
 	(list->vector
 		(filter
 			(lambda (m) (fx> (car m) 0))	; qsearch uses only good captures and promotions
-			(map													; dropping other moves help in sorting speed
+			(map													; dropping other moves helps in sorting speed
 				(lambda (m)
 					(cond
 						((is-capture? m) (cons (see m cp) m))
@@ -2251,7 +2145,11 @@
 
 (define (delayed-moves-sorter type cp)
 	(letrec ((idx 0) (keep-sorting? #t) (move-gen (gen-legal-moves-delayed type cp))
-					 (order-func (if (equal? type 'qsearch) gain-moves-only order-moves))
+					 (order-func
+							(cond
+								((equal? type 'qsearch) gain-moves-only)
+								((equal? type 'unordered) unordered-moves)
+								(else order-moves)))
 					 (vect-move '())
 				 		(next-batch (lambda ()
 							(if (null? move-gen)
@@ -2558,6 +2456,10 @@
 				'()) ; return infinite time to start pondering
 			time-limit)))
 
+(define (set-clock! cp params)
+	(let ((time-limit (uci-time cp params)))
+		(set! ms-time-limit (if (null? time-limit) '() (+ (msec-time) time-limit)))))
+
 ;; ---- uci protocol functions ----
 
 (define (cmd-uci)
@@ -2648,7 +2550,7 @@
 				(display (uci-notation (cdr (assoc 'ponder lst))))))
 		(newline))
 	((not (equal? #f (assoc 'string lst)))
-		(display "info string ") (display (cdr (assoc 'string lst))) (newline))
+		(display "info string") (display (any-list->string (cdr (assoc 'string lst)))) (newline))
 	((not (equal? #f (assoc 'currmove lst)))
 		(display "info depth ")
 		(display (cdr (assoc 'depth lst)))
@@ -2729,8 +2631,7 @@
 			(if (thread-specific (current-thread)) (loop)))))
 
 (define (cmd-go params cp max-depth ponder debug)
-	(let ((time-limit (uci-time cp params)))
-		(set! ms-time-limit (if (null? time-limit) '() (+ (msec-time) time-limit))))
+	(set-clock! cp params)
 	(spawn (go! (engine-thunk params cp max-depth ponder debug))))
 
 ; start the clock after ponderhit command
@@ -2770,24 +2671,28 @@
 					(cdr (assoc 'am epd)))))
 		(else (error 'make-test-verifier (list "unsupported epd opcode in" epd)))))
 
-(define (solve-epd epd max-depth ponder debug)
+(define (solve-epd epd params max-depth ponder debug)
 	(cmd-newgame)
 	(uci-info (list (cons 'string (list "testing position" (assoc 'id epd)))))
-	(let* ((position (board-from-fen (cdr (assoc 'fen epd)))) (engine (engine-thunk '() position max-depth ponder debug))
+	(let* ((position (board-from-fen (cdr (assoc 'fen epd)))) (engine (engine-thunk params position max-depth ponder debug))
 				 (test-verifier (make-test-verifier epd)))
+		(set-clock! position params)
 		(let loop ((solving (engine)))
 			(if solving
 				(loop (engine))
 				(let ((lookup (tt-ref position)))
 					(and (not (equal? #f lookup)) (not (null? (cadddr lookup))) (test-verifier (car (cadddr lookup)))))))))
 
-(define (cmd-epdscore filename max-depth ponder debug)
-	(let* ((epds (map parse-epd (call-with-input-file filename (lambda (p)	(read-all p (lambda (p) (read-line p)))))))
-				 (solved-epds (filter (lambda (epd) (solve-epd epd max-depth ponder debug)) epds)))
+(define (cmd-epdscore params max-depth ponder debug)
+	(let* ((epds (map parse-epd (call-with-input-file (cdr (assoc 'filename params)) (lambda (p)	(read-all p (lambda (p) (read-line p)))))))
+				 (solved-epds (filter (lambda (epd) (solve-epd epd params max-depth ponder debug)) epds)))
 		(uci-info (list (cons 'string (list "total tested positions =" (length epds) "total solved positions =" (length solved-epds)))))
 		(for-each
-			(lambda (epd) (uci-info (list (cons 'string (list "solved position =" epd))))) 
-			solved-epds)))
+			(lambda (epd)
+				(if (equal? #f (member epd solved-epds))
+					(uci-info (list (cons 'string (list "unsolved =" epd))))
+					(uci-info (list (cons 'string (list "  solved =" epd))))))
+			epds)))
 
 (define (index-of-char c str)
 	(let loop ((i 0))
@@ -2881,6 +2786,9 @@
 			(cons (parse-uci-go-option lst) (parse-uci-go (cdr lst))))
 		(else (parse-uci-go (cdr lst)))))
 
+(define (parse-epdscore lst)
+	(cons (cons 'filename (car lst)) (parse-uci-go (cdr lst))))
+
 (define (parse-uci-debug lst)
 	(string=? (car lst) "on"))
 
@@ -2917,7 +2825,7 @@
 				((string=? "divide" (list-ref lst 0))
 					(list (cons 'divide (parse-uci-go (cdr lst)))))
 				((string=? "epdscore" (list-ref lst 0))
-					(list (cons 'epdscore (cadr lst))))
+					(list (cons 'epdscore (parse-epdscore (cdr lst)))))
 				(else '())))
 		(list (cons 'quit 0))))
 
@@ -3065,28 +2973,6 @@
 			(display " ")
 			(print-moves (cdr result)))))
 
-(define (test-see cp move)
-	(let ((s1 (see move cp)) (s2 (see move cp)))
-		(println "see=" s1)
-		(println "ref=" s2))
-		; (if (not (equal? s1 d2)) (error 'test-see))
-		)
-
-(define (go-test-see)
-	(let ((x (board-from-fen "1k1r4/1pp4p/p7/4p3/8/P5P1/1PP4P/2K1R3 w - -")))
-		(test-see x #('capture #s8(4 4) #s8(4 36))))
-
-	(let ((x (board-from-fen "1k1r3q/1ppn3p/p4b2/4p3/8/P2N2P1/1PP1R1BP/2K1Q3 w - -")))	
-		(test-see x #('capture #s8(3 14) #s8(3 49))))
-				
-	(let ((x (board-from-fen "k3r3/4r3/2np4/q3p3/3P1P2/5NBK/8/8 w - - 0 1")))
-		(test-see x #('capture #s8(1 29) #s8(1 36))))
-
-	(let ((x (board-from-fen "r2qkb1r/ppp1pppp/2n2n2/8/2BP4/2N1PQ2/PP3PPP/R1B1K2R b KQkq - 0 7")))
-		(test-see x #('capture #s8(-5 59) #s8(-5 27))))
-
-)
-
 ; https://en.wikipedia.org/wiki/Checkmate
 (define (go-test-is-mate)
 
@@ -3172,32 +3058,22 @@
 
 ; https://www.chessprogramming.org/Perft
 (define (perft depth cp)
-	; test ordering speed :-( circa 25K nds interpreted
-	(let ((next-move (moves-sorter-tt 'all cp)))
+	; with 'all testing ordering speed    is :-( circa 60K- 80K nds interpreted
+	; with 'unordered only move gen speed is :-( circa 90K-140K nds interpreted
+	(let ((next-move (moves-sorter-tt 'unordered cp)))
 		(let loop ((curr-move (next-move)) (nodes 0))
 			(cond
 				((null? (cdr curr-move)) nodes)
-				; ((<= depth 1) (vector-length moves))
 				((<= depth 1)
 					(do ((i 0 (fx+ i 1)) (m curr-move))
 						((null? (cdr m)) (fx+ nodes i))
 						(set! m (next-move))))
 				(else
-					(loop
-						(next-move)
+					(loop	(next-move)
 						(+ nodes (perft (- depth 1) (make-board (cdr curr-move) cp)))))))))
-	; test move generation speed :-( circa 50K-100K nds interpreted
-	; (let loop ((moves (board-moves cp)) (nodes 0))
-	; 	(cond
-	; 		((null? moves) nodes)
-	; 		((<= depth 1)	(length moves))
-	; 		(else
-	; 			(loop
-	; 				(cdr moves)
-	; 				(+ nodes (perft (- depth 1) (make-board (car moves) cp))))))))
 
 (define (divide depth cp)
-	(let loop ((next-move (moves-sorter-tt 'all cp)) (total 0)) 
+	(let loop ((next-move (moves-sorter-tt 'unorderd cp)) (total 0)) 
 		(let ((move (next-move)))
 			(cond
 				((null? (cdr move))
