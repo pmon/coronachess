@@ -2112,12 +2112,17 @@
 
 ;; ---- search functions ----
 
-(define (can-search?) (thread-specific (current-thread)))
+(define *searched-nodes* 0)
+(define (1node-searched) (set! *searched-nodes* (fx+ 1 *searched-nodes*)))
+(define node-counter 1node-searched)
+(define (reset-visited-nodes) (set! *searched-nodes* 0) node-counter)
+(define (visited-nodes)	*searched-nodes*)
+(define (should-check-time?) (zero? (fxremainder *searched-nodes* 1024)))
 
-(define (make-counter n) (lambda () (set! n (fx+ 1 n)) n))
-(define node-counter (make-counter 0))
-(define (visited-nodes)	(fx- (node-counter) 1))
-(define (reset-visited-nodes) (set! node-counter (make-counter 0)) node-counter)
+(define (can-search?)
+	(and
+		(thread-specific (current-thread))
+		(if (should-check-time?) (time-not-expired?) #t)))
 
 (define (draw-by-repetition? cp)
 	(fx<= 3
@@ -2869,7 +2874,7 @@
 (define (uci-interface)
 	(thread-specific-set! (current-thread) #t)
 	(let loop ( (cp '()) (engine '()) (max-depth 10) (ponder #f) (debug #f))
-		(if (can-search?)
+		(if (thread-specific (current-thread))
 			(let ((cmd (parse-line (read-line) debug)))
 				; (pretty-print (list cmd engine))
 				(cond
@@ -2911,7 +2916,7 @@
 					((not (equal? #f (assoc 'ponderhit cmd)))
 						(cmd-ponderhit))
 					(else #t))
-			(if (can-search?) (loop cp engine max-depth ponder debug))))))
+			(if (thread-specific (current-thread)) (loop cp engine max-depth ponder debug))))))
 
 ;; ---- test functions ----
 
