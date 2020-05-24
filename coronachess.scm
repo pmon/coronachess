@@ -203,38 +203,38 @@
 ;; ---- THE FOLLOWING CODE DEFINES FUNCTIONS TO BE USED WITH COMPILATION ONLY ----
 ;; ---- PLEASE COMMENT THE CODE BELOW WHEN RUNNING IN THE INTERPRETER         ----
 
-; (c-declare "#define SELEM0(s64vect) ___BODY_AS(s64vect,___tSUBTYPED)[0]")
-; (c-declare "#define UELEM0(u64vect) ___BODY_AS(u64vect,___tSUBTYPED)[0]")
+(c-declare "#define SELEM0(s64vect) ___BODY_AS(s64vect,___tSUBTYPED)[0]")
+(c-declare "#define UELEM0(u64vect) ___BODY_AS(u64vect,___tSUBTYPED)[0]")
 
-; (define-macro (u64-shift! v1 v2)
-;  `(##c-code "(SELEM0(___ARG2) >= 0) ? (UELEM0(___ARG1) = ((unsigned long) UELEM0(___ARG1)) << SELEM0(___ARG2)) : (UELEM0(___ARG1) = ((unsigned long) UELEM0(___ARG1)) >> (-SELEM0(___ARG2)));" ,v1 ,v2))
+(define-macro (u64-shift! v1 v2)
+ `(##c-code "(SELEM0(___ARG2) >= 0) ? (UELEM0(___ARG1) = ((unsigned long) UELEM0(___ARG1)) << SELEM0(___ARG2)) : (UELEM0(___ARG1) = ((unsigned long) UELEM0(___ARG1)) >> (-SELEM0(___ARG2)));" ,v1 ,v2))
 
-; (define-macro (u64-mult! v1 v2)
-;  `(##c-code "UELEM0(___ARG1) *= UELEM0(___ARG2);" ,v1 ,v2))
+(define-macro (u64-mult! v1 v2)
+ `(##c-code "UELEM0(___ARG1) *= UELEM0(___ARG2);" ,v1 ,v2))
 
-; (define-macro (reset-ls1b! v1)
-;  `(##c-code "UELEM0(___ARG1) &= (UELEM0(___ARG1) - 1);" ,v1))
+(define-macro (reset-ls1b! v1)
+ `(##c-code "UELEM0(___ARG1) &= (UELEM0(___ARG1) - 1);" ,v1))
 
-; (define-macro (bitcount! res v1)
-;  `(##c-code "SELEM0(___ARG1) = __builtin_popcountl(UELEM0(___ARG2));" ,res ,v1))
+(define-macro (bitcount! res v1)
+ `(##c-code "SELEM0(___ARG1) = __builtin_popcountl(UELEM0(___ARG2));" ,res ,v1))
 
-; (define-macro (bitscan-fwd! res v1)
-;  `(##c-code "SELEM0(___ARG1) = __builtin_ffsl(UELEM0(___ARG2)) - 1;" ,res ,v1))
+(define-macro (bitscan-fwd! res v1)
+ `(##c-code "SELEM0(___ARG1) = __builtin_ffsl(UELEM0(___ARG2)) - 1;" ,res ,v1))
 
-; (define (u64-shift n i)
-;   (let ((res (u64vector n)) (v (s64vector i))) (u64-shift! res v) (u64vector-ref res 0)))
-; (define (u64-mult a b)
-;   (let ((res (u64vector a)) (v (s64vector b))) (u64-mult! res v) (u64vector-ref res 0)))
-; (define (u64reset-ls1b v) (reset-ls1b! v) v)
-; (define (u64scan-fwd v)
-;   (let ((res (s64vector 0))) (bitscan-fwd! res v) (s64vector-ref res 0)))
-; (define (bitscan-fwd bits)
-;   (let ((v (u64vector bits))) (u64scan-fwd v)))
-; (define (bitwise-bit-count bits)
-;   (let ((res (s64vector 0)) (v (u64vector bits))) (bitcount! res v) (s64vector-ref res 0)))
-; (define (u64->squares v)
-; 	(if (zero? (u64vector-ref v 0)) '() (cons (u64scan-fwd v) (u64->squares (u64reset-ls1b v)))))
-; (define (bits->squares bits) (let ((v (u64vector bits))) (u64->squares v)))
+(define (u64-shift n i)
+  (let ((res (u64vector n)) (v (s64vector i))) (u64-shift! res v) (u64vector-ref res 0)))
+(define (u64-mult a b)
+  (let ((res (u64vector a)) (v (s64vector b))) (u64-mult! res v) (u64vector-ref res 0)))
+(define (u64reset-ls1b v) (reset-ls1b! v) v)
+(define (u64scan-fwd v)
+  (let ((res (s64vector 0))) (bitscan-fwd! res v) (s64vector-ref res 0)))
+(define (bitscan-fwd bits)
+  (let ((v (u64vector bits))) (u64scan-fwd v)))
+(define (bitwise-bit-count bits)
+  (let ((res (s64vector 0)) (v (u64vector bits))) (bitcount! res v) (s64vector-ref res 0)))
+(define (u64->squares v)
+	(if (zero? (u64vector-ref v 0)) '() (cons (u64scan-fwd v) (u64->squares (u64reset-ls1b v)))))
+(define (bits->squares bits) (let ((v (u64vector bits))) (u64->squares v)))
 
 ;; ---- PLEASE COMMENT THE CODE ABOVE WHEN RUNNING IN THE INTERPRETER         ----
 ;; -------------------------------------------------------------------------------
@@ -243,13 +243,13 @@
 ;; ---- THE FOLLOWING CODE DEFINES FUNCTIONS TO BE USED IN INTERPRETER ONLY   ----
 ;; ---- PLEASE COMMENT THE CODE BELOW WHEN RUNNING THE COMPILER               ----
 
-(define (u64-shift n i)	(u64-and #xFFFFFFFFFFFFFFFF (arithmetic-shift n i)))
-(define (u64-mult a b) (u64-and #xFFFFFFFFFFFFFFFF (* a b)))
-(define (reset-ls1b bits) (u64-and bits (- bits 1)))
-(define bitscan-fwd first-bit-set)
-(define bitwise-bit-count bit-count)
-(define (bits->squares bits)
-	(if (zero? bits) '() (cons (bitscan-fwd bits) (bits->squares (reset-ls1b bits)))))
+; (define (u64-shift n i)	(u64-and #xFFFFFFFFFFFFFFFF (arithmetic-shift n i)))
+; (define (u64-mult a b) (u64-and #xFFFFFFFFFFFFFFFF (* a b)))
+; (define (reset-ls1b bits) (u64-and bits (- bits 1)))
+; (define bitscan-fwd first-bit-set)
+; (define bitwise-bit-count bit-count)
+; (define (bits->squares bits)
+; 	(if (zero? bits) '() (cons (bitscan-fwd bits) (bits->squares (reset-ls1b bits)))))
 
 ;; ---- PLEASE COMMENT THE CODE ABOVE WHEN RUNNING THE COMPILER               ----
 ;; -------------------------------------------------------------------------------
@@ -2456,7 +2456,7 @@
 	(or (null? ms-time-limit) (< (msec-time) ms-time-limit)))
 
 (define (time-left? msecs)
-	(or (null? ms-time-limit) (< (+ (* msecs 1) (msec-time)) ms-time-limit)))
+	(or (null? ms-time-limit) (< (+ msecs (msec-time)) ms-time-limit)))
 
 (define (clock cp ms-togo moves-togo)
 	(let* ((move-nbr (min 10 (fx- (chessp-fm cp) moves-in-book)))
@@ -2613,9 +2613,13 @@
 	(thread-specific-set! thread #f)
   (thread-join! thread))
 
-(define (report-bestmove cp ponder)
+(define (report-bestmove cp ponder debug)
 	(let ((lookup (tt-ref cp)))
-		(if (not (equal? #f lookup))
+		(if (equal? #f lookup) ; if the search did not started let's search 1 ply only to reply a move
+			(begin							 ; this can happen when a go command has zero time (play after time flag)
+				(set! ms-time-limit '())
+				(deep 1 0 checkmate-score cp debug)
+				(report-bestmove cp ponder debug))
 			(if (null? (cadddr lookup))
 				(uci-info (list (cons 'score (car lookup))))
 				(if (and ponder (> (length (cadddr lookup)) 1))
@@ -2663,7 +2667,7 @@
 								#f)
 							(else	(not (equal? (abs (car (deep 1 0 checkmate-score cp debug))) checkmate-score)))))
 				#t
-				(report-bestmove cp ponder)))))
+				(report-bestmove cp ponder debug)))))
 
 (define (go! engine)
 	(lambda ()
